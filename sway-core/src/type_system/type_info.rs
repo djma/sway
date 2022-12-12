@@ -1415,11 +1415,7 @@ impl TypeInfo {
     /// Given two `TypeInfo`'s `self` and `other`, checks to see if `self` is
     /// unidirectionally a subset of `other`, excluding consideration of generic
     /// types (like in the `is_subset_of` method).
-    pub(crate) fn is_subset_of_for_item_import(
-        &self,
-        other: &TypeInfo,
-        type_engine: &TypeEngine,
-    ) -> bool {
+    pub(crate) fn is_direct_subset(&self, other: &TypeInfo, type_engine: &TypeEngine) -> bool {
         self.is_subset_inner(other, type_engine)
     }
 

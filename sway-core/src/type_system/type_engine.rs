@@ -15,6 +15,8 @@ use crate::{
 use sway_error::{error::CompileError, type_error::TypeError, warning::CompileWarning};
 use sway_types::{span::Span, Ident, Spanned};
 
+use super::unify::Unifier;
+
 #[derive(Debug, Default)]
 pub struct TypeEngine {
     pub(super) slab: ConcurrentSlab<TypeInfo>,
@@ -266,6 +268,38 @@ impl TypeEngine {
         self.unify(received, expected, span, help_text)
     }
 
+    /// Replace any instances of the [TypeInfo::SelfType] variant with
+    /// `self_type` in both `received` and `expected`, then unify_right
+    /// `received` and `expected` to make `expected` equivalent to `received`.
+    pub(crate) fn unify_right_with_self(
+        &self,
+        mut received: TypeId,
+        mut expected: TypeId,
+        self_type: TypeId,
+        span: &Span,
+        help_text: &str,
+    ) -> (Vec<CompileWarning>, Vec<CompileError>) {
+        received.replace_self_type(self, self_type);
+        expected.replace_self_type(self, self_type);
+        self.unify_right(received, expected, span, help_text)
+    }
+
+    /// Replace any instances of the [TypeInfo::SelfType] variant with
+    /// `self_type` in both `received` and `expected`, then unify_left
+    /// `expected` and `received` to make `received` equivalent to `expected`.
+    pub(crate) fn unify_left_with_self(
+        &self,
+        mut received: TypeId,
+        mut expected: TypeId,
+        self_type: TypeId,
+        span: &Span,
+        help_text: &str,
+    ) -> (Vec<CompileWarning>, Vec<CompileError>) {
+        received.replace_self_type(self, self_type);
+        expected.replace_self_type(self, self_type);
+        self.unify_left(received, expected, span, help_text)
+    }
+
     /// Make the types of `received` and `expected` equivalent (or produce an
     /// error if there is a conflict between them).
     ///
@@ -280,25 +314,7 @@ impl TypeEngine {
         span: &Span,
         help_text: &str,
     ) -> (Vec<CompileWarning>, Vec<CompileError>) {
-        normalize_err(unify::unify(
-            self, received, expected, span, help_text, false,
-        ))
-    }
-
-    /// Replace any instances of the [TypeInfo::SelfType] variant with
-    /// `self_type` in both `received` and `expected`, then unify_right
-    /// `received` and `expected`.
-    pub(crate) fn unify_right_with_self(
-        &self,
-        mut received: TypeId,
-        mut expected: TypeId,
-        self_type: TypeId,
-        span: &Span,
-        help_text: &str,
-    ) -> (Vec<CompileWarning>, Vec<CompileError>) {
-        received.replace_self_type(self, self_type);
-        expected.replace_self_type(self, self_type);
-        self.unify_right(received, expected, span, help_text)
+        normalize_err(Unifier::new(self).unify(received, expected, span, help_text))
     }
 
     /// Make the type of `expected` equivalent to `received`.
@@ -346,9 +362,32 @@ impl TypeEngine {
         span: &Span,
         help_text: &str,
     ) -> (Vec<CompileWarning>, Vec<CompileError>) {
-        normalize_err(unify::unify_right(
-            self, received, expected, span, help_text,
-        ))
+        normalize_err(
+            Unifier::new(self)
+                .right()
+                .unify(received, expected, span, help_text),
+        )
+    }
+
+    /// Make the types of `received` and `expected` equivalent (or produce an
+    /// error if there is a conflict between them).
+    ///
+    /// More specifically, this function tries to make `received` equivalent to
+    /// `expected`, except in cases where `received` has more type information
+    /// than `expected` (e.g. when `expected` is a generic type and `received`
+    /// is not).
+    pub(crate) fn unify_left(
+        &self,
+        received: TypeId,
+        expected: TypeId,
+        span: &Span,
+        help_text: &str,
+    ) -> (Vec<CompileWarning>, Vec<CompileError>) {
+        normalize_err(
+            Unifier::new(self)
+                .left()
+                .unify(received, expected, span, help_text),
+        )
     }
 
     /// Helper function for making the type of `expected` equivalent to
@@ -371,7 +410,7 @@ impl TypeEngine {
     ///     option: Option<bool>,
     /// }
     ///
-    /// fn create_it<T>() -> Wrapper {
+    /// fn create_it() -> Wrapper {
     ///     Wrapper {
     ///         option: Option::None
     ///     }
@@ -402,9 +441,11 @@ impl TypeEngine {
         span: &Span,
         help_text: &str,
     ) -> (Vec<CompileWarning>, Vec<CompileError>) {
-        normalize_err(unify::unify(
-            self, expected, received, span, help_text, true,
-        ))
+        normalize_err(
+            Unifier::new(self)
+                .for_adts()
+                .unify(received, expected, span, help_text),
+        )
     }
 
     pub(crate) fn to_typeinfo(&self, id: TypeId, error_span: &Span) -> Result<TypeInfo, TypeError> {

@@ -34,6 +34,8 @@ impl ty::TyFunctionDeclaration {
             purity,
         } = fn_decl;
 
+        //println!("type checking fn {}", name);
+
         let type_engine = ctx.type_engine;
 
         // Warn against non-snake case function names.
@@ -47,6 +49,8 @@ impl ty::TyFunctionDeclaration {
         // create a namespace for the function
         let mut fn_namespace = ctx.namespace.clone();
         let mut fn_ctx = ctx.by_ref().scoped(&mut fn_namespace).with_purity(purity);
+        let mode = fn_ctx.mode();
+        let self_type = fn_ctx.self_type();
 
         // type check the type parameters, which will also insert them into the namespace
         let mut new_type_parameters = vec![];
@@ -120,17 +124,28 @@ impl ty::TyFunctionDeclaration {
 
         // unify the types of the return statements with the function return type
         for stmt in return_statements {
+            // let (new_warnings, new_errors) = type_engine.unify_left_with_self(
+            //     stmt.return_type,
+            //     return_type,
+            //     self_type,
+            //     &stmt.span,
+            //     "Return statement must return the declared function return type.",
+            // );
+            // append!((new_warnings, new_errors), warnings, errors);
             append!(
-                fn_ctx
-                    .by_ref()
-                    .with_type_annotation(return_type)
-                    .with_help_text(
-                        "Return statement must return the declared function return type."
-                    )
-                    .unify_with_self(stmt.return_type, &stmt.span),
+                type_engine.unify_left_with_self(
+                    stmt.return_type,
+                    return_type,
+                    self_type,
+                    &stmt.span,
+                    "Return statement must return the declared function return type."
+                ),
                 warnings,
                 errors
             );
+        }
+        if !errors.is_empty() {
+            return err(warnings, errors);
         }
 
         let (visibility, is_contract_call) = if is_method {
@@ -140,7 +155,7 @@ impl ty::TyFunctionDeclaration {
                 (Visibility::Public, false)
             }
         } else {
-            (visibility, fn_ctx.mode() == Mode::ImplAbiFn)
+            (visibility, mode == Mode::ImplAbiFn)
         };
 
         let function_decl = ty::TyFunctionDeclaration {

@@ -285,7 +285,6 @@ impl ty::TyExpression {
                 let typed_expr = ty::TyExpression {
                     expression: ty::TyExpressionVariant::Return(Box::new(expr)),
                     return_type: type_engine.insert_type(TypeInfo::Unknown),
-                    // FIXME: This should be Yes?
                     span,
                 };
                 ok(typed_expr, warnings, errors)

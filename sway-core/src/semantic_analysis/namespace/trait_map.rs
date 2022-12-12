@@ -530,7 +530,7 @@ impl TraitMap {
         // a curried version of the decider protocol to use in the helper functions
         let decider = |type_info: &TypeInfo, map_type_info: &TypeInfo| {
             type_info.is_subset_of(map_type_info, type_engine)
-                || map_type_info.is_subset_of_for_item_import(type_info, type_engine)
+                || map_type_info.is_direct_subset(type_info, type_engine)
         };
         let mut trait_map = self.filter_by_type_inner(type_engine, vec![type_id], decider);
         let all_types = type_engine
